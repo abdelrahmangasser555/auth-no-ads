@@ -30,3 +30,4 @@ windows/flutter/ephemeral/
 .env.*
 pubspec.yaml.bak
 *.apk
+screenshots/

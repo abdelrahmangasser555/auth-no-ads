@@ -1,0 +1,10 @@
+// Force every Android library plugin onto compileSdk 36 so AGP 9 / Flutter 3.47
+// can link flutter_plugin_android_lifecycle.
+subprojects { subproject ->
+    subproject.plugins.withId("com.android.library") {
+        def android = subproject.extensions.findByName("android")
+        if (android != null) {
+            android.compileSdk = 36
+        }
+    }
+}
