@@ -42,6 +42,9 @@ void main() {
     await pumpUi(tester);
     expect(find.text('Save codes to a file'), findsOneWidget);
     expect(find.text('Open a backup file'), findsOneWidget);
+    expect(find.text('Leave SafeAuth'), findsOneWidget);
+    expect(find.text('Put a SafeAuth file in the app'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('How this works'), 240);
     expect(find.text('How this works'), findsOneWidget);
 
     await tester.tap(find.text('Settings'));
@@ -49,6 +52,13 @@ void main() {
     expect(find.text('Security Health'), findsOneWidget);
     expect(find.text('Backup file'), findsOneWidget);
     expect(find.text('App Lock'), findsOneWidget);
+    expect(find.text('Home screen widget'), findsOneWidget);
+    await tester.tap(find.text('Home screen widget'));
+    await pumpUi(tester);
+    expect(find.text('Codes on the home screen'), findsOneWidget);
+    expect(find.text('GitHub'), findsWidgets);
+    await tester.pageBack();
+    await pumpUi(tester);
 
     await tester.tap(find.text('Home'));
     await pumpUi(tester);

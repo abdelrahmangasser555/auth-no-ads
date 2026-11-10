@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/crypto/migration.dart';
 import '../../core/crypto/otpauth_parser.dart';
 import '../../state/app_controller.dart';
 
@@ -97,11 +98,15 @@ class _AddAccountSheetState extends ConsumerState<AddAccountSheet> {
       final ctrl = ref.read(appControllerProvider.notifier);
       if (widget.mode == 'paste') {
         final raw = secret.text.trim();
-        if (raw.startsWith('otpauth-migration://')) {
-          throw const FormatException('Open Scan and point at the Google export QR instead.');
+        if (raw.contains('otpauth-migration://')) {
+          final accounts = const GoogleMigrationParser().parse(raw.trim());
+          for (final draft in accounts) {
+            await ctrl.addAccount(draft, category: category);
+          }
+        } else {
+          final draft = const OtpAuthParser().parse(raw);
+          await ctrl.addAccount(draft, category: category);
         }
-        final draft = const OtpAuthParser().parse(raw);
-        await ctrl.addAccount(draft, category: category);
       } else {
         await ctrl.addManualAccount(
           issuer: issuer.text.trim().isEmpty ? 'Account' : issuer.text.trim(),

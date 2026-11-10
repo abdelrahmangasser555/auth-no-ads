@@ -54,8 +54,10 @@ Keep one encrypted backup: **Backup → Save codes to a file**. On a new phone, 
 
 - **Home** — 2FA codes, categories, search, copy on tap, countdown ring, brand icons when the issuer is known
 - **Password** — save logins, generate strong passwords, Have I Been Pwned leak check (k-anonymity)
-- **Backup** — one encrypted file you send and open yourself
-- **Settings** — app lock, hide codes, block screenshots, security score
+- **Backup** — one encrypted `.safeauth` file you send and open yourself
+- **Migrate** — drop a SafeAuth / authenticator export into the app; on Android you can link that file so new accounts sync when it changes
+- **Home screen widget** — pick up to 8 accounts and see live codes on the Android home screen without opening the app
+- **Settings** — app lock, hide codes, block screenshots, security score, widget account picker
 
 ## Security
 

@@ -10,6 +10,8 @@ import 'package:safeauth/state/app_controller.dart';
 import '../helpers.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   VaultData sample() {
     return VaultData()
       ..accounts.add(

@@ -1,15 +1,16 @@
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/models/models.dart';
 import '../../core/services/file_out_stub.dart'
     if (dart.library.html) '../../core/services/file_out_web.dart';
 import '../../core/theme/app_colors.dart';
 import '../../state/app_controller.dart';
+import 'import_helpers.dart';
 
 class BackupScreen extends ConsumerStatefulWidget {
   const BackupScreen({super.key});
@@ -141,7 +142,10 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                   width: double.infinity,
                   height: 48,
                   child: OutlinedButton.icon(
-                    onPressed: () => _restore(context),
+                    onPressed: () => ImportHelpers.pickAndImport(
+                      context,
+                      ref,
+                    ),
                     icon: const Icon(Icons.upload_file),
                     label: const Text('Open a backup file'),
                   ),
@@ -149,6 +153,8 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          _migrateCard(context, vault),
           const SizedBox(height: 22),
           Container(
             padding: const EdgeInsets.all(16),
@@ -165,11 +171,13 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'There is no cloud account and no database. You get one encrypted file.\n\n'
+                  'There is no cloud account and no database. You get one encrypted .safeauth file.\n\n'
                   '1. Tap Save codes to a file and pick a password.\n'
                   '2. Send that file to yourself (Drive, Telegram, USB).\n'
                   '3. On a new phone, install Auth No Ads, then tap Open a backup file.\n'
-                  '4. Enter the same password. All codes appear.',
+                  '4. Enter the same password. All codes appear.\n\n'
+                  'Leaving SafeAuth: export or share their file into this app. '
+                  'On Android you can link that file so new accounts sync when it changes.',
                   style: TextStyle(height: 1.45, color: AppColors.muted),
                 ),
               ],
@@ -296,45 +304,98 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     }
   }
 
-  Future<void> _restore(BuildContext context) async {
-    final picked = await FilePicker.platform.pickFiles(
-      type: FileType.any,
-      withData: true,
+  Widget _migrateCard(BuildContext context, VaultData vault) {
+    final profile = vault.profile;
+    final linkedName = profile.linkedImportName;
+    final lastImport = profile.lastImportAt;
+    final hasLink = linkedName.isNotEmpty;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Leave SafeAuth',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'SafeAuth keeps codes behind their cloud account. Put a .safeauth file, '
+            'otpauth list, Google transfer payload, or another authenticator export '
+            'in this app. Accounts merge in. Link the file on Android and it syncs '
+            'again whenever the file changes — no need to re-open SafeAuth.',
+            style: TextStyle(height: 1.45, color: AppColors.muted),
+          ),
+          const SizedBox(height: 14),
+          if (hasLink) ...[
+            Text(
+              'Syncing $linkedName',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              lastImport == null
+                  ? 'Waiting for the first sync'
+                  : 'Last sync ${DateFormat.yMMMd().add_jm().format(lastImport.toLocal())}'
+                      '${profile.lastImportCount > 0 ? ' · ${profile.lastImportCount} new' : ''}',
+              style: const TextStyle(color: AppColors.muted),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () async {
+                      final summary = await ref
+                          .read(appControllerProvider.notifier)
+                          .syncLinkedImport();
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            summary.unchanged && summary.addedAccounts == 0
+                                ? 'Linked file is already in sync'
+                                : 'Synced ${summary.addedAccounts} new account(s)',
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Text('Sync now'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: () async {
+                    await ref.read(appControllerProvider.notifier).unlinkImport();
+                  },
+                  child: const Text('Unlink'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+          ],
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton.icon(
+              onPressed: () => ImportHelpers.pickAndImport(
+                context,
+                ref,
+                link: true,
+              ),
+              icon: const Icon(Icons.link),
+              label: Text(
+                hasLink ? 'Link a different file' : 'Put a SafeAuth file in the app',
+              ),
+            ),
+          ),
+        ],
+      ),
     );
-    if (picked == null || picked.files.isEmpty) return;
-    final bytes = picked.files.first.bytes;
-    if (bytes == null) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not read that file')),
-        );
-      }
-      return;
-    }
-    final content = String.fromCharCodes(bytes);
-    if (!context.mounted) return;
-    final password = await _askSecret(
-      context,
-      title: 'File password',
-      subtitle: 'The password you chose when you saved this file.',
-    );
-    if (password == null) return;
-    try {
-      await ref
-          .read(appControllerProvider.notifier)
-          .restoreBackup(content, password);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('All codes from that file are in the app now')),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Wrong password or this is not an Auth No Ads file')),
-        );
-      }
-    }
   }
 
   Future<String?> _askSecret(

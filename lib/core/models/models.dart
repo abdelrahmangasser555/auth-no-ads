@@ -152,18 +152,30 @@ class VaultProfile {
     this.displayName = 'You',
     this.lastBackupAt,
     this.backupDestination = '',
+    this.lastImportAt,
+    this.lastImportFormat = '',
+    this.lastImportCount = 0,
+    this.linkedImportName = '',
   });
 
   String email;
   String displayName;
   DateTime? lastBackupAt;
   String backupDestination;
+  DateTime? lastImportAt;
+  String lastImportFormat;
+  int lastImportCount;
+  String linkedImportName;
 
   Map<String, dynamic> toJson() => {
         'email': email,
         'displayName': displayName,
         'lastBackupAt': lastBackupAt?.toIso8601String(),
         'backupDestination': backupDestination,
+        'lastImportAt': lastImportAt?.toIso8601String(),
+        'lastImportFormat': lastImportFormat,
+        'lastImportCount': lastImportCount,
+        'linkedImportName': linkedImportName,
       };
 
   factory VaultProfile.fromJson(Map<String, dynamic> json) {
@@ -172,6 +184,10 @@ class VaultProfile {
       displayName: json['displayName'] as String? ?? 'You',
       lastBackupAt: DateTime.tryParse(json['lastBackupAt'] as String? ?? ''),
       backupDestination: json['backupDestination'] as String? ?? '',
+      lastImportAt: DateTime.tryParse(json['lastImportAt'] as String? ?? ''),
+      lastImportFormat: json['lastImportFormat'] as String? ?? '',
+      lastImportCount: json['lastImportCount'] as int? ?? 0,
+      linkedImportName: json['linkedImportName'] as String? ?? '',
     );
   }
 }
@@ -183,13 +199,15 @@ class AppSettings {
     this.hideCodes = false,
     this.biometricUnlock = true,
     this.autoLockSeconds = 180,
-  });
+    List<String>? widgetAccountIds,
+  }) : widgetAccountIds = widgetAccountIds ?? [];
 
   bool appLock;
   bool allowScreenshots;
   bool hideCodes;
   bool biometricUnlock;
   int autoLockSeconds;
+  List<String> widgetAccountIds;
 
   Map<String, dynamic> toJson() => {
         'appLock': appLock,
@@ -197,6 +215,7 @@ class AppSettings {
         'hideCodes': hideCodes,
         'biometricUnlock': biometricUnlock,
         'autoLockSeconds': autoLockSeconds,
+        'widgetAccountIds': widgetAccountIds,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -206,6 +225,10 @@ class AppSettings {
       hideCodes: json['hideCodes'] as bool? ?? false,
       biometricUnlock: json['biometricUnlock'] as bool? ?? true,
       autoLockSeconds: json['autoLockSeconds'] as int? ?? 180,
+      widgetAccountIds: ((json['widgetAccountIds'] as List?) ?? const [])
+          .map((e) => '$e')
+          .where((e) => e.isNotEmpty)
+          .toList(),
     );
   }
 }

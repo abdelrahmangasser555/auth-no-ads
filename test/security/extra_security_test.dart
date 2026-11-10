@@ -14,6 +14,7 @@ import 'package:safeauth/state/app_controller.dart';
 import '../helpers.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   const engine = OtpEngine();
   const parser = OtpAuthParser();
 

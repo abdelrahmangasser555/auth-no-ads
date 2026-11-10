@@ -41,6 +41,14 @@ Future<void> pumpSafeAuth(
     const MethodChannel('app.personal.safeauth/secure'),
     (_) async => null,
   );
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    const MethodChannel('app.personal.safeauth/widget'),
+    (_) async => null,
+  );
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    const MethodChannel('app.personal.safeauth/import'),
+    (_) async => null,
+  );
 
   await tester.pumpWidget(
     MediaQuery(

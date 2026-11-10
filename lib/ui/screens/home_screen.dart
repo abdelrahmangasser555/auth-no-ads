@@ -324,6 +324,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               onTap: () => Navigator.pop(context, 'edit'),
             ),
             ListTile(
+              leading: const Icon(Icons.widgets_outlined, color: AppColors.primary),
+              title: Text(
+                (ref.read(appControllerProvider).vault?.settings.widgetAccountIds.contains(id) ?? false)
+                    ? 'Remove from home screen widget'
+                    : 'Show on home screen widget',
+              ),
+              onTap: () => Navigator.pop(context, 'widget'),
+            ),
+            ListTile(
               leading: const Icon(Icons.delete_outline, color: AppColors.danger),
               title: Text('Delete $issuer'),
               onTap: () => Navigator.pop(context, 'delete'),
@@ -337,6 +346,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     }
     if (action == 'edit') {
       await _edit(id);
+    }
+    if (action == 'widget') {
+      final selected = ref
+              .read(appControllerProvider)
+              .vault
+              ?.settings
+              .widgetAccountIds
+              .contains(id) ??
+          false;
+      await ref
+          .read(appControllerProvider.notifier)
+          .toggleWidgetAccount(id, !selected);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              selected
+                  ? '$issuer removed from the home screen widget'
+                  : '$issuer will show on the home screen widget',
+            ),
+          ),
+        );
+      }
     }
   }
 
