@@ -1,0 +1,25 @@
+Auth No Ads — this PC
+
+Run in Edge
+  Double-click START_HERE.bat
+  Leave the black window open.
+
+Run all tests
+  Double-click RUN_TESTS.bat
+
+Install on your Galaxy
+  Double-click BUILD_APK.bat
+  Copy AuthNoAds-install.apk to the phone
+  Open it → Install
+  Open Auth No Ads → 6-digit PIN → fingerprint
+  Tap + and scan the 2FA QR (GitHub, Google, AWS, …)
+
+Backup
+  Backup tab → Save codes to a file → pick a password you will remember
+  On a new phone: Open a backup file → same password
+  No cloud database.
+
+Paths used by the .bat files
+  Flutter   C:\Users\PC\dev\flutter
+  JDK 17    C:\Program Files\Microsoft\jdk-17.0.21.21-hotspot
+  Android   C:\Users\PC\dev\android-sdk
