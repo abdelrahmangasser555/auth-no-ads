@@ -6,10 +6,12 @@ import '../state/app_controller.dart';
 import '../state/tab_index.dart';
 import 'screens/backup_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/import_helpers.dart';
 import 'screens/lock_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/passwords_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/widget_accounts_screen.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
@@ -19,10 +21,14 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver {
+  String? _queuedLaunch;
+  bool _handlingIncoming = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _consumeNativeIntents());
   }
 
   @override
@@ -39,11 +45,67 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
           (snap.vault?.settings.appLock ?? true)) {
         ref.read(appControllerProvider.notifier).lock();
       }
+    } else if (state == AppLifecycleState.resumed) {
+      final snap = ref.read(appControllerProvider);
+      if (snap.phase == AppPhase.ready) {
+        ref.read(appControllerProvider.notifier).syncLinkedImport();
+        ref.read(appControllerProvider.notifier).syncWidget();
+      }
+      _consumeNativeIntents();
     }
+  }
+
+  Future<void> _consumeNativeIntents() async {
+    if (_handlingIncoming) return;
+    _handlingIncoming = true;
+    try {
+      final ctrl = ref.read(appControllerProvider.notifier);
+      final launch = await ctrl.widgets.takeLaunchAction();
+      if (launch != null && launch.isNotEmpty) {
+        _queuedLaunch = launch;
+      }
+      final incoming = await ctrl.files.takeIncoming();
+      final snap = ref.read(appControllerProvider);
+      if (snap.phase == AppPhase.ready) {
+        _openQueuedLaunch();
+        if (incoming != null && incoming.content.isNotEmpty && mounted) {
+          await ImportHelpers.importContent(
+            context,
+            ref,
+            content: incoming.content,
+            uri: incoming.uri,
+            name: incoming.name,
+            link: incoming.uri != null,
+          );
+        }
+      }
+    } finally {
+      _handlingIncoming = false;
+    }
+  }
+
+  void _openQueuedLaunch() {
+    if (_queuedLaunch != 'widget') return;
+    _queuedLaunch = null;
+    ref.read(tabIndexProvider.notifier).state = 3;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final nav = Navigator.of(context);
+      nav.push(
+        MaterialPageRoute<void>(builder: (_) => const WidgetAccountsScreen()),
+      );
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(appControllerProvider, (prev, next) {
+      if (next.phase == AppPhase.ready && prev?.phase != AppPhase.ready) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _openQueuedLaunch();
+          _consumeNativeIntents();
+        });
+      }
+    });
     final snap = ref.watch(appControllerProvider);
     return switch (snap.phase) {
       AppPhase.loading => const Scaffold(

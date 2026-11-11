@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:safeauth/core/services/secret_kv.dart';
@@ -7,6 +9,7 @@ import 'package:safeauth/state/app_controller.dart';
 import '../helpers.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late ProviderContainer container;
   late VaultStore store;
 
@@ -89,5 +92,66 @@ void main() {
     await c.loadPreviewAccounts();
     await c.loadPreviewAccounts();
     expect(container.read(appControllerProvider).vault!.accounts.length, 3);
+  });
+
+  test('widget selection is capped and dropped when the account is deleted', () async {
+    final c = await ready();
+    await c.addManualAccount(
+      issuer: 'GitHub',
+      label: 'me',
+      secret: 'JBSWY3DPEHPK3PXP',
+    );
+    final id = container.read(appControllerProvider).vault!.accounts.single.id;
+    await c.toggleWidgetAccount(id, true);
+    expect(
+      container.read(appControllerProvider).vault!.settings.widgetAccountIds,
+      [id],
+    );
+    await c.deleteAccount(id);
+    expect(
+      container.read(appControllerProvider).vault!.settings.widgetAccountIds,
+      isEmpty,
+    );
+  });
+
+  test('imports a SafeAuth-style JSON file without duplicating secrets', () async {
+    final c = await ready();
+    await c.addManualAccount(
+      issuer: 'GitHub',
+      label: 'me',
+      secret: 'JBSWY3DPEHPK3PXP',
+    );
+    final summary = await c.importFileContent(
+      jsonEncode({
+        'otp_list': [
+          {
+            'issuer': 'GitHub',
+            'username': 'dup',
+            'secretKey': 'JBSWY3DPEHPK3PXP',
+          },
+          {
+            'issuer': 'Heroku',
+            'username': 'new',
+            'secretKey': 'GEZDGNBVGY3TQOJQ',
+          },
+        ],
+      }),
+    );
+    expect(summary.addedAccounts, 1);
+    expect(container.read(appControllerProvider).vault!.accounts.length, 2);
+    expect(
+      container.read(appControllerProvider).vault!.accounts.map((a) => a.issuer),
+      containsAll(['GitHub', 'Heroku']),
+    );
+    expect(
+      container
+          .read(appControllerProvider)
+          .vault!
+          .accounts
+          .where((a) => a.issuer == 'Heroku')
+          .single
+          .category,
+      'Imported',
+    );
   });
 }

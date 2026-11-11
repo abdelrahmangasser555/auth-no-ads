@@ -1,14 +1,19 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/crypto/base32.dart';
+import '../core/crypto/import_formats.dart';
 import '../core/crypto/otp_engine.dart';
 import '../core/crypto/otpauth_parser.dart';
 import '../core/models/models.dart';
 import '../core/services/biometrics.dart';
+import '../core/services/linked_file.dart';
 import '../core/services/secure_screen.dart';
 import '../core/services/vault_store.dart';
+import '../core/services/widget_bridge.dart';
 
 enum AppPhase { loading, onboarding, locked, ready }
 
@@ -49,18 +54,43 @@ class AppSnapshot {
   }
 }
 
+class ImportSummary {
+  const ImportSummary({
+    required this.addedAccounts,
+    required this.addedPasswords,
+    required this.format,
+    this.linked = false,
+    this.unchanged = false,
+  });
+
+  final int addedAccounts;
+  final int addedPasswords;
+  final String format;
+  final bool linked;
+  final bool unchanged;
+}
+
 class AppController extends Notifier<AppSnapshot> {
   final VaultStore store;
   final BiometricGate biometrics;
   final OtpEngine otp;
+  final WidgetBridge widgets;
+  final LinkedFileBridge files;
+  final VaultFileImporter importer;
 
   AppController({
     VaultStore? store,
     BiometricGate? biometrics,
     OtpEngine? otp,
+    WidgetBridge? widgets,
+    LinkedFileBridge? files,
+    VaultFileImporter? importer,
   })  : store = store ?? VaultStore(),
         biometrics = biometrics ?? BiometricGate(),
-        otp = otp ?? const OtpEngine();
+        otp = otp ?? const OtpEngine(),
+        widgets = widgets ?? WidgetBridge.instance,
+        files = files ?? LinkedFileBridge.instance,
+        importer = importer ?? const VaultFileImporter();
 
   Timer? _lockTimer;
 
@@ -116,6 +146,8 @@ class AppController extends Notifier<AppSnapshot> {
       );
       await SecureScreen.setAllowed(vault.settings.allowScreenshots);
       _armAutoLock();
+      await syncWidget();
+      await syncLinkedImport();
     } on VaultLockedOut catch (e) {
       state = state.copyWith(
         error: 'Too many attempts. Try again in ${e.remaining.inSeconds}s',
@@ -142,6 +174,8 @@ class AppController extends Notifier<AppSnapshot> {
       );
       await SecureScreen.setAllowed(vault.settings.allowScreenshots);
       _armAutoLock();
+      await syncWidget();
+      await syncLinkedImport();
     } catch (e) {
       state = state.copyWith(error: 'Fingerprint unlock failed. Use your PIN.');
     }
@@ -177,6 +211,7 @@ class AppController extends Notifier<AppSnapshot> {
     state = state.copyWith(vault: vault);
     await SecureScreen.setAllowed(vault.settings.allowScreenshots);
     _armAutoLock();
+    await syncWidget();
   }
 
   Future<void> addAccount(OtpAccountDraft draft, {String category = 'Uncategorized'}) async {
@@ -262,6 +297,7 @@ class AppController extends Notifier<AppSnapshot> {
     final vault = state.vault;
     if (vault == null) return;
     vault.accounts.removeWhere((a) => a.id == id);
+    vault.settings.widgetAccountIds.removeWhere((x) => x == id);
     await _save(vault);
   }
 
@@ -325,28 +361,208 @@ class AppController extends Notifier<AppSnapshot> {
 
   Future<void> restoreBackup(String file, String password) async {
     final imported = await store.importBackup(file: file, password: password);
+    await _mergeBundle(
+      ImportBundle(
+        format: 'safeauth.backup.v1',
+        accounts: imported.accounts
+            .map(
+              (a) => OtpAccountDraft(
+                type: a.type,
+                secret: a.secret,
+                issuer: a.issuer,
+                label: a.label,
+                algorithm: a.algorithm,
+                digits: a.digits,
+                period: a.period,
+                counter: a.counter,
+              ),
+            )
+            .toList(),
+        passwords: imported.passwords,
+      ),
+    );
+  }
+
+  Future<void> setWidgetAccountIds(List<String> ids) async {
+    final vault = state.vault;
+    if (vault == null) return;
+    final allowed = vault.accounts.map((a) => a.id).toSet();
+    vault.settings.widgetAccountIds =
+        ids.where(allowed.contains).toList(growable: true);
+    await _save(vault);
+  }
+
+  Future<void> toggleWidgetAccount(String id, bool selected) async {
+    final vault = state.vault;
+    if (vault == null) return;
+    final ids = [...vault.settings.widgetAccountIds];
+    if (selected) {
+      if (!ids.contains(id) && ids.length < 8) ids.add(id);
+    } else {
+      ids.remove(id);
+    }
+    await setWidgetAccountIds(ids);
+  }
+
+  Future<void> syncWidget() async {
+    final vault = state.vault;
+    if (vault == null) return;
+    final selected = vault.settings.widgetAccountIds.toSet();
+    final accounts = vault.accounts.where((a) => selected.contains(a.id)).toList();
+    await widgets.syncAccounts(accounts);
+  }
+
+  Future<ImportSummary> importFileContent(
+    String content, {
+    String? password,
+    String? uri,
+    String? name,
+    bool link = false,
+  }) async {
+    VaultData? decrypted;
+    if (importer.isEncryptedSafeAuth(content)) {
+      if (password == null || password.isEmpty) {
+        throw const ImportNeedsPassword('SafeAuth backup');
+      }
+      decrypted = await store.importBackup(file: content, password: password);
+    } else if (importer.looksEncrypted(content) && (password == null || password.isEmpty)) {
+      throw const ImportNeedsPassword('encrypted backup');
+    }
+    final bundle = importer.parse(content, decryptedVault: decrypted);
+    final summary = await _mergeBundle(bundle);
+    if (link && uri != null && uri.isNotEmpty) {
+      await store.saveLinkedImport(
+        uri: uri,
+        name: name ?? 'SafeAuth file',
+        hash: _hash(content),
+        password: password,
+      );
+      final vault = state.vault;
+      if (vault != null) {
+        vault.profile.linkedImportName = name ?? 'SafeAuth file';
+        await _save(vault);
+      }
+      return ImportSummary(
+        addedAccounts: summary.addedAccounts,
+        addedPasswords: summary.addedPasswords,
+        format: summary.format,
+        linked: true,
+      );
+    }
+    return summary;
+  }
+
+  Future<ImportSummary> syncLinkedImport() async {
+    if (state.vault == null) {
+      return const ImportSummary(
+        addedAccounts: 0,
+        addedPasswords: 0,
+        format: '',
+        unchanged: true,
+      );
+    }
+    final linked = await store.linkedImport();
+    if (linked == null || linked.uri.isEmpty) {
+      return const ImportSummary(
+        addedAccounts: 0,
+        addedPasswords: 0,
+        format: '',
+        unchanged: true,
+      );
+    }
+    final snapshot = await files.read(linked.uri);
+    if (snapshot == null || snapshot.missing || snapshot.content.isEmpty) {
+      return ImportSummary(
+        addedAccounts: 0,
+        addedPasswords: 0,
+        format: linked.name,
+        unchanged: true,
+      );
+    }
+    final hash = _hash(snapshot.content);
+    if (hash == linked.hash) {
+      return const ImportSummary(
+        addedAccounts: 0,
+        addedPasswords: 0,
+        format: '',
+        unchanged: true,
+      );
+    }
+    try {
+      final summary = await importFileContent(
+        snapshot.content,
+        password: linked.password,
+        uri: linked.uri,
+        name: snapshot.name ?? linked.name,
+        link: true,
+      );
+      await store.saveLinkedHash(hash);
+      return summary;
+    } catch (_) {
+      return const ImportSummary(
+        addedAccounts: 0,
+        addedPasswords: 0,
+        format: '',
+        unchanged: true,
+      );
+    }
+  }
+
+  Future<void> unlinkImport() async {
+    final linked = await store.linkedImport();
+    if (linked != null && linked.uri.isNotEmpty) {
+      await files.unlink(linked.uri);
+    }
+    await store.clearLinkedImport();
+    final vault = state.vault;
+    if (vault == null) return;
+    vault.profile.linkedImportName = '';
+    await _save(vault);
+  }
+
+  Future<LinkedImportRef?> linkedImport() => store.linkedImport();
+
+  Future<ImportSummary> _mergeBundle(ImportBundle bundle) async {
     final vault = state.vault;
     if (vault == null) {
-      await _save(imported);
-      return;
+      throw const FormatException('Unlock the vault before importing');
     }
-    for (final account in imported.accounts) {
-      final dup = vault.accounts.any((a) => a.secret == account.secret);
-      if (!dup) vault.accounts.add(account);
+    var addedAccounts = 0;
+    var addedPasswords = 0;
+    const category = 'Imported';
+    for (final draft in bundle.accounts) {
+      final secret = draft.secret.replaceAll(' ', '').toUpperCase();
+      final dup = vault.accounts.any(
+        (a) => a.secret.replaceAll(' ', '').toUpperCase() == secret,
+      );
+      if (dup) continue;
+      await addAccount(draft, category: category);
+      addedAccounts += 1;
     }
-    for (final password in imported.passwords) {
+    for (final password in bundle.passwords) {
       final dup = vault.passwords.any(
         (p) => p.title == password.title && p.username == password.username,
       );
-      if (!dup) vault.passwords.add(password);
+      if (dup) continue;
+      vault.passwords.add(password);
+      addedPasswords += 1;
     }
-    imported.profile.lastBackupAt = DateTime.now().toUtc();
-    vault.profile.lastBackupAt = DateTime.now().toUtc();
-    if (vault.profile.email.isEmpty) {
-      vault.profile.email = imported.profile.email;
+    if (!vault.categories.contains(category) && addedAccounts > 0) {
+      vault.categories.add(category);
     }
+    vault.profile.lastImportAt = DateTime.now().toUtc();
+    vault.profile.lastImportFormat = bundle.format;
+    vault.profile.lastImportCount = addedAccounts + addedPasswords;
+    vault.profile.lastBackupAt ??= DateTime.now().toUtc();
     await _save(vault);
+    return ImportSummary(
+      addedAccounts: addedAccounts,
+      addedPasswords: addedPasswords,
+      format: bundle.format,
+    );
   }
+
+  String _hash(String content) => sha256.convert(utf8.encode(content)).toString();
 }
 
 final appControllerProvider =

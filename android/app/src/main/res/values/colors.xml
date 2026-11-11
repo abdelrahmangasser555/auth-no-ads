@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="splash">#1A6DFF</color>
+    <color name="widget_header">#1A6DFF</color>
+    <color name="widget_bg">#F4F6FA</color>
+    <color name="widget_card">#FFFFFF</color>
+    <color name="widget_text">#1C1C1E</color>
+    <color name="widget_muted">#8B909A</color>
+    <color name="widget_code">#1557D4</color>
 </resources>

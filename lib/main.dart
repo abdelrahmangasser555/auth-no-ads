@@ -15,6 +15,8 @@ void main() {
   runApp(const ProviderScope(child: SafeAuthApp()));
 }
 
+final appNavigatorKey = GlobalKey<NavigatorState>();
+
 class SafeAuthApp extends StatelessWidget {
   const SafeAuthApp({super.key});
 
@@ -22,6 +24,7 @@ class SafeAuthApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Auth No Ads',
+      navigatorKey: appNavigatorKey,
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
       builder: (context, child) => PhoneShell(child: child ?? const SizedBox.shrink()),

@@ -29,6 +29,10 @@ class VaultStore {
   static const _kFailCount = 'fail_count';
   static const _kHasVault = 'has_vault';
   static const _kWebVault = 'web_vault_blob';
+  static const _kLinkedUri = 'linked_import_uri';
+  static const _kLinkedName = 'linked_import_name';
+  static const _kLinkedHash = 'linked_import_hash';
+  static const _kLinkedPassword = 'linked_import_password';
 
   bool get isWeb => kIsWeb;
 
@@ -169,6 +173,42 @@ class VaultStore {
     });
   }
 
+  Future<LinkedImportRef?> linkedImport() async {
+    final uri = await _kv.read(_kLinkedUri);
+    if (uri == null || uri.isEmpty) return null;
+    return LinkedImportRef(
+      uri: uri,
+      name: await _kv.read(_kLinkedName) ?? '',
+      hash: await _kv.read(_kLinkedHash) ?? '',
+      password: await _kv.read(_kLinkedPassword),
+    );
+  }
+
+  Future<void> saveLinkedImport({
+    required String uri,
+    required String name,
+    required String hash,
+    String? password,
+  }) async {
+    await _kv.write(_kLinkedUri, uri);
+    await _kv.write(_kLinkedName, name);
+    await _kv.write(_kLinkedHash, hash);
+    if (password != null && password.isNotEmpty) {
+      await _kv.write(_kLinkedPassword, password);
+    }
+  }
+
+  Future<void> saveLinkedHash(String hash) async {
+    await _kv.write(_kLinkedHash, hash);
+  }
+
+  Future<void> clearLinkedImport() async {
+    await _kv.write(_kLinkedUri, '');
+    await _kv.write(_kLinkedName, '');
+    await _kv.write(_kLinkedHash, '');
+    await _kv.write(_kLinkedPassword, '');
+  }
+
   Future<VaultData> importBackup({
     required String file,
     required String password,
@@ -232,4 +272,20 @@ class VaultCorrupt implements Exception {
 class VaultLockedOut implements Exception {
   const VaultLockedOut(this.remaining);
   final Duration remaining;
+}
+
+class LinkedImportRef {
+  const LinkedImportRef({
+    required this.uri,
+    required this.name,
+    required this.hash,
+    this.password,
+  });
+
+  final String uri;
+  final String name;
+  final String hash;
+  final String? password;
+
+  bool get isEmpty => uri.isEmpty;
 }

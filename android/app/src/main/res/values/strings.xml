@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">Show selected 2FA codes on the home screen without opening the app.</string>
+    <string name="widget_title">Auth No Ads</string>
+    <string name="widget_empty">Choose accounts in Auth No Ads → Settings → Home screen widget</string>
+    <string name="widget_refresh">Refresh codes</string>
+</resources>

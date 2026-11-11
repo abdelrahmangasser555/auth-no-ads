@@ -5,6 +5,7 @@ import '../../core/crypto/hibp.dart';
 import '../../core/theme/app_colors.dart';
 import '../../state/app_controller.dart';
 import '../../state/tab_index.dart';
+import 'widget_accounts_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -124,6 +125,21 @@ class SettingsScreen extends ConsumerWidget {
                 style: TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600)),
           ),
           _card([
+            ListTile(
+              leading: const Icon(Icons.widgets_outlined),
+              title: const Text('Home screen widget'),
+              subtitle: Text(
+                s.widgetAccountIds.isEmpty
+                    ? 'Pick accounts to show without opening the app'
+                    : '${s.widgetAccountIds.length} account${s.widgetAccountIds.length == 1 ? '' : 's'} on the widget',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const WidgetAccountsScreen(),
+                ),
+              ),
+            ),
             const ListTile(
               leading: Icon(Icons.key_outlined),
               title: Text('Autofill'),
